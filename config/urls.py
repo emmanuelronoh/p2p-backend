@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include
+from apps.notifications.routing import websocket_urlpatterns  # ✅ import the list
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -10,4 +11,8 @@ urlpatterns = [
     path('api/', include('apps.wallet.urls')),
     path('swap/', include('apps.swap.urls')),
     path('bridge/', include('apps.bridge.urls')),
+    path('notifications/', include('apps.notifications.urls')),
 ]
+
+# ✅ Add WebSocket patterns at the end
+urlpatterns += websocket_urlpatterns

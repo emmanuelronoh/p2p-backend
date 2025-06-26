@@ -8,6 +8,7 @@ from cryptography.fernet import Fernet
 from decouple import config
 from corsheaders.defaults import default_headers
 from decimal import Decimal
+from rest_framework.settings import api_settings
 
 USDT_ADDR = config('USDT_ADDR')
 
@@ -43,7 +44,29 @@ INSTALLED_APPS = [
     'apps.wallet',
     'apps.swap',
     'apps.bridge',
+    'apps.notifications',
+    'channels',
+    'daphne',
 ]
+
+ASGI_APPLICATION = 'config.asgi.application'
+
+# Channel layer configuration (development)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
+
+# For production, use Redis:
+# CHANNEL_LAYERS = {
+#     "default": {
+#         "BACKEND": "channels_redis.core.RedisChannelLayer",
+#         "CONFIG": {
+#             "hosts": [("redis://localhost:6379/0")],
+#         },
+#     },
+# }
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # <-- must be at the top!
@@ -206,15 +229,16 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/hour',
         'user': '1000/hour',
-        'registration': '10/hour',  # Add this line for registration endpoint
-        'login': '20/hour',         # For login endpoint
-        'security_questions': '5/hour',  # For security questions
-        'verify_questions': '10/hour',   # For question verification
-        'recovery': '5/hour',            # For account recovery
-        'password_reset': '5/hour', 
-        'profile': '100/day', 
-        'password_change': '5/hour',  
+        'registration': '10/hour',
+        'login': '20/hour',
+        'security_questions': '5/hour',
+        'verify_questions': '10/hour',
+        'recovery': '5/hour',
+        'password_reset': '5/hour',
+        'profile': '100/day',
+        'password_change': '5/hour',
     },
+    'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler'
 }
 
 # Argon2 password hashing

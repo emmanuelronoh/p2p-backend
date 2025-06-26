@@ -123,32 +123,7 @@ class TransactionQueue(models.Model):
             models.Index(fields=['status'], name='idx_txqueue_status'),
             models.Index(fields=['tx_hash'], name='idx_txqueue_hash'),
         ]
-
-class EscrowDispute(models.Model):
-    OPEN = 1
-    IN_REVIEW = 2
-    RESOLVED = 3
-    
-    STATUS_CHOICES = [
-        (OPEN, 'Open'),
-        (IN_REVIEW, 'In Review'),
-        (RESOLVED, 'Resolved'),
-    ]
-    
-    escrow = models.ForeignKey(EscrowWallet, on_delete=models.CASCADE, related_name='disputes')
-    initiator = models.CharField(max_length=64)  # user_token
-    reason = models.TextField()
-    status = models.IntegerField(choices=STATUS_CHOICES, default=OPEN)
-    resolution = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    resolved_at = models.DateTimeField(null=True, blank=True)
-    
-    class Meta:
-        indexes = [
-            models.Index(fields=['status'], name='idx_dispute_status'),
-        ]
-
-
+        
 class EscrowDispute(models.Model):
     OPEN = 1
     IN_REVIEW = 2
