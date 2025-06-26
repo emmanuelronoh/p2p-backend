@@ -2,7 +2,7 @@ from rest_framework import viewsets, generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from django.utils import timezone
 from datetime import timedelta
 from .models import (
@@ -15,6 +15,11 @@ from .serializers import (
     CreateDepositAddressSerializer, WithdrawalLimitSerializer,
     ExchangeRateSerializer, PortfolioSummarySerializer
 )
+from .blockchain import BlockchainManager
+from .tasks import process_withdrawal, check_deposit_status
+import logging
+
+logger = logging.getLogger(__name__)
 
 class CurrencyViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Currency.objects.filter(is_active=True)
@@ -38,7 +43,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        return Transaction.objects.filter(user=self.request.user).order_by('-created_at')
+        # Show all transactions including deposits, withdrawals, and trades
+        return Transaction.objects.filter(
+            Q(user=self.request.user) |
+            Q(related_user=self.request.user)
+        ).order_by('-created_at')
 
     def get_serializer_class(self):
         if self.action in ['create']:
@@ -52,6 +61,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         currency = serializer.validated_data['currency']
         amount = serializer.validated_data['amount']
         tx_type = serializer.validated_data['type']
+        address = serializer.validated_data.get('address')
         
         wallet, _ = Wallet.objects.get_or_create(
             user=request.user,
@@ -60,11 +70,20 @@ class TransactionViewSet(viewsets.ModelViewSet):
         )
         
         if tx_type == 'deposit':
-            wallet.balance += amount
-            status = 'completed'
+            # In a real system, deposits are detected by blockchain monitoring
+            return Response(
+                {'error': 'Deposits must come through blockchain transactions'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
         elif tx_type == 'withdrawal':
-            wallet.balance -= amount
-            status = 'pending'
+            # Verify sufficient balance including pending withdrawals
+            available_balance = wallet.balance - wallet.locked
+            if available_balance < amount:
+                return Response(
+                    {'error': 'Insufficient balance'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             # Check withdrawal limits
             limit, _ = WithdrawalLimit.objects.get_or_create(
@@ -79,26 +98,29 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            limit.used_24h += amount
-            limit.save()
-        
-        wallet.save()
-        
-        transaction = Transaction.objects.create(
-            user=request.user,
-            wallet=wallet,
-            currency=currency,
-            amount=amount,
-            type=tx_type,
-            status=status,
-            address=serializer.validated_data.get('address'),
-            memo=serializer.validated_data.get('memo')
-        )
-        
-        return Response(
-            TransactionSerializer(transaction).data,
-            status=status.HTTP_201_CREATED
-        )
+            # Lock the funds
+            wallet.locked += amount
+            wallet.save()
+            
+            # Create pending transaction
+            transaction = Transaction.objects.create(
+                user=request.user,
+                wallet=wallet,
+                currency=currency,
+                amount=amount,
+                type=tx_type,
+                status='pending',
+                address=address,
+                memo=serializer.validated_data.get('memo')
+            )
+            
+            # Process withdrawal asynchronously
+            process_withdrawal.delay(transaction.id)
+            
+            return Response(
+                TransactionSerializer(transaction).data,
+                status=status.HTTP_201_CREATED
+            )
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
@@ -112,7 +134,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
             
         if transaction.type == 'withdrawal':
             wallet = transaction.wallet
-            wallet.balance += transaction.amount
+            wallet.locked -= transaction.amount
+            wallet.balance += transaction.amount  # Return the funds
             wallet.save()
             
             # Update withdrawal limit
@@ -132,7 +155,7 @@ class DepositAddressViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        return DepositAddress.objects.filter(user=self.request.user)
+        return DepositAddress.objects.filter(user=self.request.user, is_active=True)
 
     def get_serializer_class(self):
         if self.action in ['create']:
@@ -144,22 +167,33 @@ class DepositAddressViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         
         currency = serializer.validated_data['currency']
+        blockchain = BlockchainManager()
         
-        # In a real implementation, you would generate a new address here
-        # For demo purposes, we'll just create a mock address
-        address = f"{currency.code}_mock_address_{request.user.id}"
-        
-        deposit_address = DepositAddress.objects.create(
-            user=request.user,
-            currency=currency,
-            address=address,
-            is_active=True
-        )
-        
-        return Response(
-            DepositAddressSerializer(deposit_address).data,
-            status=status.HTTP_201_CREATED
-        )
+        try:
+            # Generate real blockchain address
+            address_info = blockchain.generate_address(currency.code)
+            
+            deposit_address = DepositAddress.objects.create(
+                user=request.user,
+                currency=currency,
+                address=address_info['address'],
+                privkey=address_info['privkey'],  # Should be encrypted in production
+                is_active=True
+            )
+            
+            # Start monitoring this address for deposits
+            check_deposit_status.delay(deposit_address.id)
+            
+            return Response(
+                DepositAddressSerializer(deposit_address).data,
+                status=status.HTTP_201_CREATED
+            )
+        except Exception as e:
+            logger.error(f"Error generating deposit address: {str(e)}")
+            return Response(
+                {'error': 'Could not generate deposit address'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class WithdrawalLimitViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = WithdrawalLimitSerializer
@@ -185,6 +219,19 @@ class ExchangeRateViewSet(viewsets.ReadOnlyModelViewSet):
             )
             return Response(ExchangeRateSerializer(rate).data)
         except ExchangeRate.DoesNotExist:
+            # Try to fetch live rate if not in database
+            blockchain = BlockchainManager()
+            live_rate = blockchain.get_exchange_rate(base_currency, quote_currency)
+            if live_rate:
+                base = Currency.objects.get(code=base_currency)
+                quote = Currency.objects.get(code=quote_currency)
+                rate = ExchangeRate.objects.create(
+                    base_currency=base,
+                    quote_currency=quote,
+                    rate=live_rate
+                )
+                return Response(ExchangeRateSerializer(rate).data)
+            
             return Response(
                 {'error': 'Exchange rate not found'},
                 status=status.HTTP_404_NOT_FOUND
@@ -197,14 +244,21 @@ class PortfolioSummaryView(generics.GenericAPIView):
     def get(self, request):
         wallets = Wallet.objects.filter(user=request.user)
         
-        # Get exchange rates for all currencies to USD (or your base currency)
-        rates = {
-            rate.base_currency.code: rate.rate
-            for rate in ExchangeRate.objects.filter(
-                base_currency__in=[w.currency for w in wallets],
-                quote_currency__code='USD'
-            )
-        }
+        # Get exchange rates for all currencies to USD
+        rates = {}
+        for rate in ExchangeRate.objects.filter(
+            base_currency__in=[w.currency for w in wallets],
+            quote_currency__code='USD'
+        ):
+            rates[rate.base_currency.code] = rate.rate
+        
+        # For currencies without rates, try to get live rates
+        blockchain = BlockchainManager()
+        for wallet in wallets:
+            if wallet.currency.code not in rates:
+                live_rate = blockchain.get_exchange_rate(wallet.currency.code, 'USD')
+                if live_rate:
+                    rates[wallet.currency.code] = live_rate
         
         total_balance = 0
         currencies = []
@@ -219,7 +273,8 @@ class PortfolioSummaryView(generics.GenericAPIView):
                 'balance': wallet.balance,
                 'available': wallet.balance - wallet.locked,
                 'locked': wallet.locked,
-                'usd_value': usd_value
+                'usd_value': usd_value,
+                'usd_rate': usd_rate
             })
             
             total_balance += usd_value

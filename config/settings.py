@@ -44,12 +44,16 @@ INSTALLED_APPS = [
     'apps.wallet',
     'apps.swap',
     'apps.bridge',
-    'apps.notifications',
     'channels',
-    'daphne',
+    'apps.notifications',
+
 ]
 
 ASGI_APPLICATION = 'config.asgi.application'
+
+
+
+FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY')
 
 # Channel layer configuration (development)
 CHANNEL_LAYERS = {
@@ -57,6 +61,7 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
     },
 }
+
 
 # For production, use Redis:
 # CHANNEL_LAYERS = {

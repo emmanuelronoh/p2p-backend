@@ -16,9 +16,9 @@ router.register(r'exchange-rates', ExchangeRateViewSet, basename='exchange-rate'
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('portfolio/summary/', PortfolioSummaryView.as_view(), name='portfolio-summary'),
+    path('wallet/portfolio/summary/', PortfolioSummaryView.as_view(), name='portfolio-summary'),
     
     # Additional endpoints
     path('wallet/balances/', WalletViewSet.as_view({'get': 'balances'}), name='wallet-balances'),
-    path('exchange-rates/ticker/', ExchangeRateViewSet.as_view({'get': 'ticker'}), name='exchange-rate-ticker'),
+    path('wallet/exchange-rates/ticker/', ExchangeRateViewSet.as_view({'get': 'ticker'}), name='exchange-rate-ticker'),
 ]
