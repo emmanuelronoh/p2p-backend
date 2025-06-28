@@ -9,14 +9,19 @@ from decouple import config
 from corsheaders.defaults import default_headers
 from decimal import Decimal
 from rest_framework.settings import api_settings
+from dotenv import load_dotenv
+
 
 USDT_ADDR = config('USDT_ADDR')
 
 WEB3_RPC_URL = config('WEB3_RPC_URL')
 
+
 # Generate or use existing key for security questions
 SECURITY_QUESTION_ENCRYPTION_KEY = Fernet.generate_key().decode()
 BASE_DIR = Path(__file__).resolve().parent.parent 
+
+load_dotenv(BASE_DIR / '.env')
 
 # Initialize environment variables
 env = environ.Env()
@@ -25,6 +30,7 @@ env.read_env(os.path.join(BASE_DIR, '.env'))
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env('DJANGO_SECRET_KEY')
+print(f"ENCRYPTION_KEY loaded: {os.getenv('ENCRYPTION_KEY') is not None}")
 
 # Application definition
 INSTALLED_APPS = [
@@ -143,7 +149,7 @@ SECURITY_SETTINGS = {
     }
 }
 
-WEB3_RPC_URL = "https://mainnet.infura.io/v3/YOUR_PROJECT_ID"  # Or your node URL
+WEB3_RPC_URL = "https://mainnet.infura.io/v3/9e98c23f60ab491eab2cd5a82eece1fd"  # Or your node URL
 USDT_ADDR = "0xdAC17F958D2ee523a2206206994597C13D831ec7"  # Mainnet USDT
 
 # Load environment
@@ -264,4 +270,21 @@ XUSDT_SETTINGS = {
     'ESCROW_MIN_FEE': 1.0,  # 1 USDT
     'LISTING_EXPIRY_DAYS': 7,
     'TRADE_TIMEOUT_HOURS': 24,
+}
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'wallet': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+    },
 }

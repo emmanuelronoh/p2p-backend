@@ -27,17 +27,19 @@ class CurrencySerializer(serializers.ModelSerializer):
 
 class WalletSerializer(serializers.ModelSerializer):
     currency = CurrencySerializer()
-    available = serializers.DecimalField(max_digits=20, decimal_places=8, read_only=True)
-    staked = serializers.DecimalField(max_digits=20, decimal_places=8, read_only=True)
-    interest_owed = serializers.DecimalField(max_digits=20, decimal_places=8, read_only=True)
+    available = serializers.SerializerMethodField()
+    address = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = Wallet
         fields = [
-            'id', 'currency', 'balance', 'locked', 'available',
-            'staked', 'interest_owed', 'address', 'updated_at'
+            'id', 'currency', 'balance', 'locked', 
+            'available', 'address', 'updated_at'
         ]
-        read_only_fields = ['id', 'address', 'updated_at']
+        read_only_fields = fields
+
+    def get_available(self, obj):
+        return obj.balance - obj.locked
 
 class TransactionSerializer(serializers.ModelSerializer):
     currency = CurrencySerializer()
@@ -240,3 +242,7 @@ class TransactionHistorySerializer(serializers.Serializer):
     total_count = serializers.IntegerField()
     page = serializers.IntegerField()
     page_size = serializers.IntegerField()
+
+class SetWalletAddressSerializer(serializers.Serializer):
+    address = serializers.CharField(max_length=255)
+    currency = serializers.CharField(max_length=10)
