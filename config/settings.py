@@ -32,17 +32,23 @@ env.read_env(os.path.join(BASE_DIR, '.env'))
 SECRET_KEY = env('DJANGO_SECRET_KEY')
 print(f"ENCRYPTION_KEY loaded: {os.getenv('ENCRYPTION_KEY') is not None}")
 
-# Application definition
 INSTALLED_APPS = [
+    # Django core
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    
+    # Third-party apps
     'django_extensions',
     'rest_framework',
+    'rest_framework_simplejwt',  # Required for JWT
     'corsheaders',
+    'channels',  # For WebSockets
+    
+    # Local apps
     'apps.core',
     'apps.escrow',
     'apps.p2p',
@@ -50,9 +56,7 @@ INSTALLED_APPS = [
     'apps.wallet',
     'apps.swap',
     'apps.bridge',
-    'channels',
     'apps.notifications',
-
 ]
 
 ASGI_APPLICATION = 'config.asgi.application'
@@ -114,23 +118,23 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
-
 # DATABASES = {
 #     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.getenv('DB_NAME'),
-#         'USER': os.getenv('DB_USER'),
-#         'PASSWORD': os.getenv('DB_PASSWORD'),
-#         'HOST': os.getenv('DB_HOST'),
-#         'PORT': os.getenv('DB_PORT'),
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
 #     }
 # }
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST'),
+        'PORT': os.getenv('DB_PORT'),
+    }
+}
 
 XUSDT_SETTINGS = {
     'USER_TOKEN_HMAC_KEY': 'your-secret-key-here',
